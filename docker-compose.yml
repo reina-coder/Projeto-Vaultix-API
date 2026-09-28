@@ -1,0 +1,22 @@
+services:
+  vaultix-api:
+    build: .
+    image: vaultix-api:1.0.0
+    container_name: vaultix-api
+    ports:
+      - "8080:8080"
+    environment:
+      # Banco Oracle remoto da FIAP - sobrescreva via .env se precisar
+      DB_URL: ${DB_URL}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      SERVER_PORT: 8080
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
