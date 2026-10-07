@@ -126,15 +126,15 @@ A API expõe **6 grupos** de endpoints (muito além do mínimo de 4 exigido):
 
 ### Credenciais já configuradas
 ```
-DB user:     RM563618
-DB password: 300606
+DB user:     seu_usuario
+DB password: sua_senha
 admin API:   admin / admin123   (criado automaticamente pela migration V4)
 ```
 
 ### Passo 1 — Limpar o schema (se necessário)
 Se o seu schema FIAP já tem as tabelas da atividade anterior (que é o caso), rode primeiro o `cleanup.sql` no SQL Developer / DBeaver:
 
-1. Conecte com `RM563618 / 300606` em `oracle.fiap.com.br:1521/ORCL`
+1. Conecte com `seu_usuario / sua_senha` em `oracle.fiap.com.br:1521/ORCL`
 2. Abra `cleanup.sql`, selecione tudo (Ctrl+A) e execute como script (F5)
 3. Confirme que as tabelas sumiram
 
@@ -245,9 +245,9 @@ Para o avaliador conseguir ver as triggers do PL/SQL funcionando através da API
 
 | Variável | Default | Descrição |
 |---|---|---|
-| `DB_URL` | `jdbc:oracle:thin:@oracle.fiap.com.br:1521:ORCL` | URL JDBC do Oracle |
-| `DB_USER` | `RM563618` | Usuário do banco |
-| `DB_PASSWORD` | `300606` | Senha do banco |
+| `DB_URL` | `sua_url_do_banco` | URL JDBC do Oracle |
+| `DB_USER` | `seu_usuario` | Usuário do banco |
+| `DB_PASSWORD` | `sua_senha` | Senha do banco |
 | `SERVER_PORT` | `8080` | Porta HTTP da aplicação |
 | `JWT_SECRET` | (chave Base64 padrão) | Segredo para assinar JWTs |
 | `JWT_EXPIRATION` | `86400` | Tempo de vida do token em segundos |
