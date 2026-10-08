@@ -1,20 +1,28 @@
-# --- Build stage ---
+# =========================
+# Etapa 1 - Build
+# =========================
 FROM maven:3.9.9-eclipse-temurin-17-alpine AS build
+
 WORKDIR /build
 
-# Copia o POM e baixa dependencias (cache de camada)
+# Copia primeiro o pom para aproveitar o cache do Docker
 COPY pom.xml .
-RUN mvn -B -e -ntp dependency:go-offline
+RUN mvn -B -ntp dependency:go-offline
 
-# Copia o codigo e empacota
+# Copia o código da aplicação e os testes
 COPY src ./src
-RUN mvn -B -e -ntp clean package -DskipTests
 
-# --- Runtime stage ---
+# Compila e executa os testes automatizados
+RUN mvn -B -ntp clean package
+
+# =========================
+# Etapa 2 - Runtime
+# =========================
 FROM eclipse-temurin:17-jre-alpine
+
 WORKDIR /app
 
-# Usuario nao-root para seguranca
+# Executa a aplicação com usuário não-root
 RUN addgroup -S vaultix && adduser -S vaultix -G vaultix
 USER vaultix
 
@@ -22,7 +30,7 @@ COPY --from=build /build/target/vaultix-api.jar app.jar
 
 EXPOSE 8080
 
-# Healthcheck via actuator
+# O Actuator será usado para verificar se a API está saudável
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD wget -qO- http://localhost:8080/actuator/health || exit 1
 

@@ -3,9 +3,9 @@ spring:
     name: vaultix-api
 
   datasource:
-    url: ${DB_URL}
-    username: ${DB_USER}
-    password: ${DB_PASSWORD}
+    url: ${DB_URL:jdbc:oracle:thin:@localhost:1521/XEPDB1}
+    username: ${DB_USER:vaultix}
+    password: ${DB_PASSWORD:vaultix_password}
     driver-class-name: oracle.jdbc.OracleDriver
     hikari:
       maximum-pool-size: 10
@@ -41,8 +41,8 @@ server:
 vaultix:
   jwt:
     # Secret em Base64 com >= 256 bits. Em producao, usar variavel de ambiente.
-    JWT_SECRET: ${JWT_SECRET}
-    JWT_EXPIRATION: ${JWT_EXPIRATION}   # 24h
+    secret: ${JWT_SECRET:dmF1bHRpeC1sb2NhbC1zZWNyZXQta2V5LWZvci1kZXZlbG9wbWVudC1vbmx5LTIwMjY=}
+    expiration-seconds: ${JWT_EXPIRATION:86400}   # 24h
 
 # Swagger UI
 springdoc:

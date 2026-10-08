@@ -1,22 +1,55 @@
 services:
+  oracle:
+    image: gvenzl/oracle-xe:21-slim
+    container_name: vaultix-oracle
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD:-oracle_password}
+      APP_USER: ${DB_USER:-vaultix}
+      APP_USER_PASSWORD: ${DB_PASSWORD:-vaultix_password}
+    ports:
+      - "1521:1521"
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD-SHELL", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 60s
+    networks:
+      - vaultix-network
+
   vaultix-api:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: vaultix-api:1.0.0
     container_name: vaultix-api
     ports:
       - "8080:8080"
     environment:
-      # Banco Oracle remoto da FIAP - sobrescreva via .env se precisar
-      DB_URL: ${DB_URL}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
+      DB_URL: jdbc:oracle:thin:@oracle:1521/XEPDB1
+      DB_USER: ${DB_USER:-vaultix}
+      DB_PASSWORD: ${DB_PASSWORD:-vaultix_password}
       SERVER_PORT: 8080
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRATION: ${JWT_EXPIRATION}
+      JWT_SECRET: ${JWT_SECRET:-dmF1bHRpeC1sb2NhbC1zZWNyZXQta2V5LWZvci1kZXZlbG9wbWVudC1vbmx5LTIwMjY=}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400}
+    depends_on:
+      oracle:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
       interval: 30s
       timeout: 5s
-      retries: 3
+      retries: 5
       start_period: 60s
+    networks:
+      - vaultix-network
+
+volumes:
+  oracle-data:
+
+networks:
+  vaultix-network:
+    driver: bridge
