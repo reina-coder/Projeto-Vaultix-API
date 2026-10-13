@@ -89,7 +89,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build e push da imagem
         uses: docker/build-push-action@v6
@@ -173,7 +173,7 @@ jobs:
           db-user: ${{ secrets.DB_USER }}
           db-password: ${{ secrets.DB_PASSWORD }}
           jwt-secret: ${{ secrets.JWT_SECRET }}
-          registry-token: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
+          registry-token: ${{ secrets.GITHUB_TOKEN }}
           registry-user: ${{ github.actor }}
 
   # ---------------------------------------------------------------------------
@@ -202,5 +202,5 @@ jobs:
           db-user: ${{ secrets.DB_USER }}
           db-password: ${{ secrets.DB_PASSWORD }}
           jwt-secret: ${{ secrets.JWT_SECRET }}
-          registry-token: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
+          registry-token: ${{ secrets.GITHUB_TOKEN }}
           registry-user: ${{ github.actor }}
