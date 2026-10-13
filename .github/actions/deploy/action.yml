@@ -1,0 +1,98 @@
+name: Deploy Vaultix API
+description: Faz o deploy da imagem Docker em um servidor via SSH (staging ou produção) e valida o healthcheck.
+
+inputs:
+  app-env:        { description: "staging ou production", required: true }
+  image:          { description: "Imagem completa (ghcr.io/...:sha)", required: true }
+  host-port:      { description: "Porta publicada no servidor", required: true }
+  ssh-host:       { description: "Host do servidor", required: false, default: "" }
+  ssh-user:       { description: "Usuário SSH", required: false, default: "" }
+  ssh-key:        { description: "Chave privada SSH", required: false, default: "" }
+  db-url:         { description: "URL JDBC do Oracle", required: false, default: "" }
+  db-user:        { description: "Usuário do banco", required: false, default: "" }
+  db-password:    { description: "Senha do banco", required: false, default: "" }
+  jwt-secret:     { description: "Segredo JWT em Base64", required: false, default: "" }
+  registry-token: { description: "Token para o docker pull no servidor", required: true }
+  registry-user:  { description: "Usuário do registry", required: true }
+
+runs:
+  using: composite
+  steps:
+    - name: Verificar configuração do ambiente
+      id: check
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh-host }}
+        SSH_KEY: ${{ inputs.ssh-key }}
+      run: |
+        if [ -z "$SSH_HOST" ] || [ -z "$SSH_KEY" ]; then
+          echo "configured=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::Ambiente '${{ inputs.app-env }}' sem SSH_HOST/SSH_KEY. Deploy simulado (dry-run). Configure os secrets do Environment para o deploy real."
+        else
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Dry-run (servidor não configurado)
+      if: steps.check.outputs.configured != 'true'
+      shell: bash
+      run: |
+        echo "DRY-RUN do deploy"
+        echo "  Ambiente : ${{ inputs.app-env }}"
+        echo "  Imagem   : ${{ inputs.image }}"
+        echo "  Porta    : ${{ inputs.host-port }}"
+        echo "  Arquivo  : deploy/docker-compose.deploy.yml"
+
+    - name: Deploy via SSH
+      if: steps.check.outputs.configured == 'true'
+      shell: bash
+      env:
+        SSH_HOST: ${{ inputs.ssh-host }}
+        SSH_USER: ${{ inputs.ssh-user }}
+        SSH_KEY: ${{ inputs.ssh-key }}
+        APP_ENV: ${{ inputs.app-env }}
+        IMAGE: ${{ inputs.image }}
+        HOST_PORT: ${{ inputs.host-port }}
+        DB_URL: ${{ inputs.db-url }}
+        DB_USER: ${{ inputs.db-user }}
+        DB_PASSWORD: ${{ inputs.db-password }}
+        JWT_SECRET: ${{ inputs.jwt-secret }}
+        REGISTRY_TOKEN: ${{ inputs.registry-token }}
+        REGISTRY_USER: ${{ inputs.registry-user }}
+      run: |
+        set -euo pipefail
+        mkdir -p ~/.ssh
+        printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+        ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+        SSH="ssh -i $HOME/.ssh/deploy_key $SSH_USER@$SSH_HOST"
+        DIR="vaultix/$APP_ENV"
+
+        $SSH "mkdir -p $DIR"
+        scp -i "$HOME/.ssh/deploy_key" deploy/docker-compose.deploy.yml "$SSH_USER@$SSH_HOST:$DIR/docker-compose.yml"
+
+        # .env remoto (permissão 600) - os segredos trafegam por stdin, não pela linha de comando
+        $SSH "umask 077; cat > $DIR/.env" <<ENVFILE
+        IMAGE=$IMAGE
+        APP_ENV=$APP_ENV
+        HOST_PORT=$HOST_PORT
+        DB_URL=$DB_URL
+        DB_USER=$DB_USER
+        DB_PASSWORD=$DB_PASSWORD
+        JWT_SECRET=$JWT_SECRET
+        ENVFILE
+
+        echo "$REGISTRY_TOKEN" | $SSH "docker login ghcr.io -u $REGISTRY_USER --password-stdin"
+        $SSH "cd $DIR && docker compose pull && docker compose up -d --remove-orphans"
+
+        echo "Aguardando healthcheck..."
+        for i in $(seq 1 30); do
+          if $SSH "curl -fsS http://localhost:$HOST_PORT/actuator/health" | grep -q '"status":"UP"'; then
+            echo "Deploy de $APP_ENV concluído: API saudável."
+            exit 0
+          fi
+          sleep 10
+        done
+        echo "::error::Healthcheck falhou após o deploy em $APP_ENV."
+        $SSH "cd $DIR && docker compose logs --tail=100" || true
+        exit 1

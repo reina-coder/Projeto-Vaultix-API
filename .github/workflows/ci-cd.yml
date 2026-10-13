@@ -1,0 +1,206 @@
+name: CI/CD Vaultix API
+
+# Fluxo:
+#   Pull Request  -> build + testes
+#   Push na main  -> build + testes -> imagem Docker -> teste de integração
+#                    -> deploy STAGING (automático) -> deploy PRODUÇÃO (aprovação manual)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  JAVA_VERSION: "17"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1) BUILD + TESTES AUTOMATIZADOS
+  # ---------------------------------------------------------------------------
+  build-and-test:
+    name: Build e testes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Compilar, executar testes e empacotar
+        run: mvn -B -ntp clean verify
+
+      - name: Publicar relatórios de teste
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorios-de-teste
+          path: target/surefire-reports/
+          if-no-files-found: warn
+
+      - name: Publicar JAR da aplicação
+        uses: actions/upload-artifact@v4
+        with:
+          name: vaultix-api-jar
+          path: target/vaultix-api.jar
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # 2) IMAGEM DOCKER (somente na main) -> GitHub Container Registry
+  # ---------------------------------------------------------------------------
+  docker-image:
+    name: Imagem Docker
+    needs: build-and-test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Definir nome da imagem (GHCR exige minúsculas)
+        id: meta
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "image=${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "latest=${IMAGE}:latest" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login no GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
+
+      - name: Build e push da imagem
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}
+            ${{ steps.meta.outputs.latest }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ---------------------------------------------------------------------------
+  # 3) TESTE DE INTEGRAÇÃO: sobe API + Oracle XE (docker-compose do projeto)
+  # ---------------------------------------------------------------------------
+  integration-smoke-test:
+    name: Teste de integração (API + Oracle)
+    needs: docker-image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Subir API e banco com docker compose
+        run: docker compose up -d --build
+
+      - name: Aguardar a API ficar saudável
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/actuator/health | grep -q '"status":"UP"'; then
+              echo "API saudável após ${i} tentativa(s)."
+              exit 0
+            fi
+            echo "Aguardando API... (${i}/60)"
+            sleep 10
+          done
+          echo "::error::A API não ficou saudável a tempo."
+          exit 1
+
+      - name: Smoke test - login do admin (valida Flyway + JWT + banco)
+        run: |
+          RESPONSE=$(curl -fsS -X POST http://localhost:8080/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"admin","password":"admin123"}')
+          echo "$RESPONSE" | grep -q '"token"' || { echo "Login falhou: $RESPONSE"; exit 1; }
+          echo "Login OK."
+
+      - name: Logs dos containers (em caso de falha)
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Derrubar ambiente
+        if: always()
+        run: docker compose down -v
+
+  # ---------------------------------------------------------------------------
+  # 4) DEPLOY STAGING (automático)
+  # ---------------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy - Staging
+    needs: [docker-image, integration-smoke-test]
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Deploy
+        uses: ./.github/actions/deploy
+        with:
+          app-env: staging
+          image: ${{ needs.docker-image.outputs.image }}
+          host-port: ${{ vars.HOST_PORT || '8081' }}
+          ssh-host: ${{ secrets.SSH_HOST }}
+          ssh-user: ${{ secrets.SSH_USER }}
+          ssh-key: ${{ secrets.SSH_KEY }}
+          db-url: ${{ secrets.DB_URL }}
+          db-user: ${{ secrets.DB_USER }}
+          db-password: ${{ secrets.DB_PASSWORD }}
+          jwt-secret: ${{ secrets.JWT_SECRET }}
+          registry-token: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
+          registry-user: ${{ github.actor }}
+
+  # ---------------------------------------------------------------------------
+  # 5) DEPLOY PRODUÇÃO (exige aprovação manual configurada no Environment)
+  # ---------------------------------------------------------------------------
+  deploy-production:
+    name: Deploy - Produção
+    needs: [docker-image, deploy-staging]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Deploy
+        uses: ./.github/actions/deploy
+        with:
+          app-env: production
+          image: ${{ needs.docker-image.outputs.image }}
+          host-port: ${{ vars.HOST_PORT || '8080' }}
+          ssh-host: ${{ secrets.SSH_HOST }}
+          ssh-user: ${{ secrets.SSH_USER }}
+          ssh-key: ${{ secrets.SSH_KEY }}
+          db-url: ${{ secrets.DB_URL }}
+          db-user: ${{ secrets.DB_USER }}
+          db-password: ${{ secrets.DB_PASSWORD }}
+          jwt-secret: ${{ secrets.JWT_SECRET }}
+          registry-token: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
+          registry-user: ${{ github.actor }}
