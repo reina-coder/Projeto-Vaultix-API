@@ -139,6 +139,7 @@ jobs:
           echo "$RESPONSE" | grep -q '"token"' || { echo "Login falhou: $RESPONSE"; exit 1; }
           echo "Login OK."
 
+
       - name: Logs dos containers (em caso de falha)
         if: failure()
         run: docker compose logs --no-color
