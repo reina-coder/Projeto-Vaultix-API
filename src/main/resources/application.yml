@@ -41,8 +41,8 @@ server:
 vaultix:
   jwt:
     # Secret em Base64 com >= 256 bits. Em producao, usar variavel de ambiente.
-    secret: ${JWT_SECRET:dmF1bHRpeC1sb2NhbC1zZWNyZXQta2V5LWZvci1kZXZlbG9wbWVudC1vbmx5LTIwMjY=}
-    expiration-seconds: ${JWT_EXPIRATION:86400}   # 24h
+    secret:  dmF1bHRpeC1zZWNyZXQta2V5LXBhcmEtZmlhcC0yMDI1LWNvbS1tYWlzLWRlLWR1emVudG9zLWUtY2lucXVlbnRhLWUtc2Vpcy1iaXRz
+    expiration-seconds: 86400   # 24h
 
 # Swagger UI
 springdoc:

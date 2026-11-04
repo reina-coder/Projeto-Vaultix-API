@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["content"],
+  "properties": {
+    "content": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "idCliente", "idPlano", "status"]
+      }
+    },
+    "totalElements": { "type": "integer" },
+    "totalPages": { "type": "integer" },
+    "size": { "type": "integer" },
+    "number": { "type": "integer" }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["id", "idCliente", "tipoIncidente", "status"],
+  "properties": {
+    "id": { "type": "integer" },
+    "idCliente": { "type": "integer" },
+    "nomeCliente": { "type": ["string", "null"] },
+    "tipoIncidente": { "type": "string" },
+    "descricao": { "type": ["string", "null"] },
+    "dtOcorrencia": { "type": ["string", "null"] },
+    "severidade": { "type": ["string", "null"] },
+    "status": { "type": "string" }
+  },
+  "additionalProperties": false
+}
